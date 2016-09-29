@@ -32,7 +32,7 @@ class DepTo4lang():
         self.lexicon = Lexicon.load_from_binary(self.lexicon_fn)
         self.read_dep_map(dep_map_fn)
         self.word2lemma = {}
-        self.first_only = cfg.getboolean('filter', 'first_only')
+        self.first_n = cfg.getint('filter', 'first_n')
 
     def read_dep_map(self, dep_map_fn):
         self.dependencies = defaultdict(list)
@@ -73,7 +73,7 @@ class DepTo4lang():
                     continue
 
                 unified_machine = None
-
+                cnt = 0
                 for sense in entry['senses']:
                     if sense['mwe'] is not None:
                         continue
@@ -91,7 +91,8 @@ class DepTo4lang():
                         unified_machine = machine
                     else:
                         unified_machine.unify(machine)
-                    if self.first_only is True:
+                    cnt += 1
+                    if self.first_n != 0 and self.first_n <= cnt:
                         break
                 self.lexicon.add(word, unified_machine)
             except Exception:
@@ -126,7 +127,7 @@ class DepTo4lang():
         return [
             d['dep'].setdefault(
                 'lemma', self.lemmatizer.lemmatize(
-                    d['dep']['word'], uppercase=True))
+                    d['dep']['word'], uppercase=False))
             for d in deps if d['type'] == 'root']  # TODO
 
     def get_dep_definition(self, word, deps):
