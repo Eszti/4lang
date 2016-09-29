@@ -37,7 +37,7 @@ class Lemmatizer():
 
     def _lemmatize_with_stopwords(self, word, uppercase):
         if word == 'have':
-            return 'HAS'
+            return 'has'
         elif not uppercase:
             return word
         elif word in self.stopwords:

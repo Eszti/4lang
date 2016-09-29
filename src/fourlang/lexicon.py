@@ -176,7 +176,7 @@ class Lexicon():
         return machine
 
     def get_machine(self, printname, new_machine=False, allow_new_base=False,
-                    allow_new_ext=False, allow_new_oov=True):
+                    allow_new_ext=False, allow_new_oov=True, allow_4lang=True):
         """returns the lowest level (base < ext < oov) existing machine
         for the printname. If none exist, creates a new machine in the lowest
         level allowed by the allow_* flags. Will always create new machines
@@ -195,9 +195,13 @@ class Lexicon():
             return self.get_machine(printname=printname.lower(), new_machine=new_machine, allow_new_base=allow_new_base,
                                     allow_new_ext=allow_new_ext, allow_new_oov=allow_new_oov)
 
-        machines = self.lexicon.get(
-            printname, self.ext_lexicon.get(
-                printname, self.oov_lexicon.get(printname, set())))
+        if allow_4lang:
+            machines = self.lexicon.get(
+                printname, self.ext_lexicon.get(
+                    printname, self.oov_lexicon.get(printname, set())))
+        else:
+            machines = self.ext_lexicon.get(
+                    printname, self.oov_lexicon.get(printname, set()))
         if len(machines) == 0:
             # logging.info(
             #    u'creating new machine for unknown word: "{0}"'.format(

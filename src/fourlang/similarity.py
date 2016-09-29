@@ -48,6 +48,7 @@ class WordSimilarity():
         if compositional is True:
             self.text_to_4lang = TextTo4lang(cfg, direct_parse=True)
         logging.info("expand is {0}".format(self.expand))
+        self.allow_4lang = cfg.getboolean('machine', 'allow_4lang')
 
     def log(self, string):
         if not self.batch:
@@ -71,8 +72,8 @@ class WordSimilarity():
         self.log('nodes1_expand: {0}, nodes2_expand: {1}'.format(nodes1_expand, nodes2_expand))
 
         sims = self.sim_feats.get_all_features(
-            MachineInfo(machine1_expand, nodes1, nodes1_expand, links1, links1_expand),
-            MachineInfo(machine2_expand, nodes2, nodes2_expand, links2, links2_expand))
+            MachineInfo(machine1, nodes1, nodes1_expand, links1, links1_expand),
+            MachineInfo(machine2, nodes2, nodes2_expand, links2, links2_expand))
 
         # TODO: we should use this way, but so far it didn't prove to be better
         # if sims['is_antonym'] == 1:
@@ -88,7 +89,7 @@ class WordSimilarity():
             lemma_sims = self.sim_feats.one_similarities()
 
         machine1, machine2 = map(
-            self.lexicon.get_machine, (lemma1, lemma2))
+            lambda l: self.lexicon.get_machine(l, allow_4lang=self.allow_4lang), (lemma1, lemma2))
         machine1_expand, machine2_expand = map(
             self.lexicon.get_expanded_definition, (lemma1, lemma2))
 
@@ -451,6 +452,7 @@ def main_word_test(cfg):
 
     test_pairs = get_test_pairs(cfg.get('sim', 'word_test_data'))
     sims, gold_sims = [], []
+
     for (w1, w2), gold_sim in test_pairs.iteritems():
         sim = word_sim.word_similarities(w1, w2)  # dummy POS-tags
         if sim is None:

@@ -182,7 +182,7 @@ class DepTo4lang():
                 for t in (dep['gov'], dep['dep']):
                     self.word2lemma[t['word']] = t.setdefault(
                         'lemma', self.lemmatizer.lemmatize(
-                            t['word'], uppercase=True))
+                            t['word'], uppercase=False))
 
         for i, deps in enumerate(dep_lists):
             try:
