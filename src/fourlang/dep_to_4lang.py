@@ -33,6 +33,8 @@ class DepTo4lang():
         self.read_dep_map(dep_map_fn)
         self.word2lemma = {}
         self.first_n = cfg.getint('filter', 'first_n')
+        self.graph_dir = self.cfg.get('machine', 'graph_dir')
+        ensure_dir(self.graph_dir)
 
     def read_dep_map(self, dep_map_fn):
         self.dependencies = defaultdict(list)
@@ -110,7 +112,7 @@ class DepTo4lang():
     def print_graphs(self):
         print_4lang_graphs(
             self.lexicon.ext_lexicon,
-            self.cfg.get('machine', 'graph_dir'))
+            self.graph_dir)
 
     def save_machines(self):
         self.lexicon.save_to_binary(self.out_fn)

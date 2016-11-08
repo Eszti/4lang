@@ -26,6 +26,14 @@ class SimFeatures:
         }
         self.no_path_cnt = 0
         self.expand_path = cfg.getboolean(section, 'expand_path')
+        self.node_weights = cfg.getboolean(section, 'node_weights')
+        self.OOV_FREQ = 1
+        self.stopwords = ['lack', 'not', 'has']
+        self.debug_graph = False
+
+        if self.node_weights:
+            node_freq_file = cfg.get(section, 'node_freq_file')
+            self.node_freqs = self._process_tab_sep_file(node_freq_file)
 
         self.shortest_path_file_name = cfg.get(section, 'shortest_path_res')
         if not os.path.isfile(self.shortest_path_file_name) or cfg.getboolean(section, 'calc_shortest_path'):
@@ -37,7 +45,6 @@ class SimFeatures:
         else:
             self.calc_path = False
 
-
         if 'fullgraph' in self.feats_to_get:
             self.fullgraph_options = FullgraphOptions(cfg)
             self.machinegraph_options = MachineGraphOptions(self.fullgraph_options)
@@ -46,6 +53,28 @@ class SimFeatures:
                 print "NODES count: {0}".format(len(self.full_graph.nodes()))
                 print "EDGES count: {0}".format(len(self.full_graph.edges()))
                 self.UG = self.full_graph.to_undirected()
+            else:
+                self.excluded_words = set()
+
+                # get excluded words set
+                with open(self.fullgraph_options.freq_file) as f:
+                    for line_no, line in enumerate(f):
+                        fields = line.strip().decode('utf-8').split('\t')
+                        freq = int(fields[0])
+                        word = fields[1]
+                        if line_no > self.fullgraph_options.freq_cnt and (
+                                        self.fullgraph_options.freq_val == 0 or
+                                        self.fullgraph_options.freq_val > freq):
+                            break
+                        self.excluded_words.add(word)
+    def _process_tab_sep_file(self, file):
+        pairs = {}
+        with open(file) as f:
+            for line_no, line in enumerate(f):
+                fields = line.strip().decode('utf-8').split('\t')
+                freq, w = fields[:2]
+                pairs[w.lower()] = int(freq)
+        return pairs
 
     def get_all_features(self, graph1, graph2):
         all_feats = dict()
@@ -141,32 +170,53 @@ class SimFeatures:
                 G2 = MachineGraph.create_from_machines(
                     [machine2], machinegraph_options=self.machinegraph_options).G.to_undirected()
                 active_graph.add_edges_from(G2.edges(data=True))
+                for word in self.excluded_words:
+                    if active_graph.has_node(word) and name1 != word and name2 != word:
+                        active_graph.remove_node(word)
 
                 # TODO: e.g. "take" is empty
                 if name1 not in active_graph.nodes() or name2 not in G2.nodes():
                     return {"shortest_path": length}
 
                 i = 0
+                if self.debug_graph:
+                    filename = 'test/temp_graphs/{0}_{1}_{2}.dot'.format(name1, name2, i)
+                    nx.drawing.nx_agraph.write_dot(active_graph, filename)
+
                 while not nx.has_path(active_graph, name1, name2):
                     if i > 5:
                         return {"shortest_path": length}
-                    self.lexicon.expand_definition(machine1)
-                    self.lexicon.expand_definition(machine2)
+                    self.lexicon.expand_definition(machine1, self.stopwords)
+                    self.lexicon.expand_definition(machine2, self.stopwords)
                     active_graph = MachineGraph.create_from_machines(
                         [machine1], machinegraph_options=self.machinegraph_options).G.to_undirected()
                     G2 = MachineGraph.create_from_machines(
                         [machine2], machinegraph_options=self.machinegraph_options).G.to_undirected()
                     active_graph.add_edges_from(G2.edges(data=True))
+                    for word in self.excluded_words:
+                        if active_graph.has_node(word) and name1 != word and name2 != word:
+                            active_graph.remove_node(word)
                     i += 1
+                    if self.debug_graph:
+                        filename = 'test/temp_graphs/{0}_{1}_{2}.dot'.format(name1, name2, i)
+                        nx.drawing.nx_agraph.write_dot(active_graph, filename)
+
             else:
                 active_graph = self.UG
 
             if name1 not in active_graph.nodes() or name2 not in active_graph.nodes():
                 return {"shortest_path" : length}
             if nx.has_path(active_graph, name1, name2):
+                if self.node_weights:
+                    old_graph = active_graph
+                    active_graph = self._transform_node_weights_to_edge_weights(old_graph)
                 path = nx.shortest_path(active_graph, name1, name2, weight='weight')
-                if self.fullgraph_options.weighted == True:
+                if self.fullgraph_options.embedding_weighted:
                     length = nx.shortest_path_length(active_graph, name1, name2, weight='weight')
+                elif self.node_weights:
+                    for w in path:
+                        length += self.node_freqs[w]
+                    length = length - self.node_freqs[name1] - self.node_freqs[name2]
                 else:
                     length = len(path)
                 print "PATH: " + name1 + " " + name2
@@ -179,7 +229,22 @@ class SimFeatures:
                 self.no_path_cnt += 1
         else:
             length = self.lexicon.get_shortest_path(name1, name2, self.shortest_path_file_name)
+        # if length != 0:
+        #     length = 1.0 / length
+        # else:
+        #     length = 1.0
         return {"shortest_path" : length}
+
+    def _transform_node_weights_to_edge_weights(self, G):
+        G_new = nx.DiGraph()
+        for (x, y) in G.edges():
+            if y not in self.node_freqs.keys():
+                self.node_freqs[y] = self.OOV_FREQ
+            if x not in self.node_freqs.keys():
+                self.node_freqs[x] = self.OOV_FREQ
+            G_new.add_edge(x, y, weight=self.node_freqs[y])
+            G_new.add_edge(y, x, weight=self.node_freqs[x])
+        return G_new
 
     def contains(self, links, name):
         for link in links:
@@ -214,9 +279,10 @@ class FullgraphOptions():
         self.freq_val = cfg.getint(section, 'freq_val')
         self.freq_cnt = cfg.getint(section, 'freq_count')
         self.nodename_option = cfg.getint(section, 'nodename_option')
-        self.weighted = cfg.getboolean(section, 'weighted')
-        embedding_path = cfg.get(section, 'embedding_path')
-        self.embedding_model = TSVEmbedding(embedding_path)
+        self.embedding_weighted = cfg.getboolean(section, 'embedding_weighted')
+        if self.embedding_weighted:
+            embedding_path = cfg.get(section, 'embedding_path')
+            self.embedding_model = TSVEmbedding(embedding_path)
         self.color_based = cfg.getboolean(section, 'color_based')
 
 class MachineInfo():
